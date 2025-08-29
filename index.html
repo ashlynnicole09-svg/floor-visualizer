@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Floor Visualizer — GitHub Pages Ready</title>
+  <meta name="description" content="Upload a room photo, mark the floor plane, and try different flooring textures with realistic perspective and scaling." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Floor Visualizer</h1>
+    <div class="actions">
+      <button id="btnLoadDemo" class="secondary">Load Demo Room</button>
+      <button id="btnExportImage">Export PNG</button>
+      <button id="btnSaveConfig" class="secondary">Save Session</button>
+      <input type="file" id="btnLoadConfig" accept="application/json" class="hidden"/>
+      <button id="btnLoadConfigProxy" class="secondary">Load Session</button>
+      <a id="repoLink" href="https://github.com" target="_blank" rel="noopener">?</a>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <aside class="left">
+      <section class="card">
+        <h2>1) Room Photo</h2>
+        <input type="file" id="roomInput" accept="image/*" />
+        <p class="muted">Tip: Use a photo shot at waist height, facing the floor area.</p>
+        <div class="tool-row">
+          <button id="btnFit">Fit</button>
+          <button id="btn1x">1:1</button>
+          <label><input type="checkbox" id="chkGuides" checked/> Show Guides</label>
+        </div>
+        <div class="tool-row">
+          <button id="btnResetPoints" class="danger">Reset Floor Points</button>
+          <button id="btnMeasure" class="secondary">Measure Tool</button>
+        </div>
+        <div class="tool-row">
+          <label>Known Distance: <input type="number" id="knownDistance" min="1" step="0.1" value="36"/> in</label>
+          <button id="btnSetScale" class="secondary">Set Scale from Line</button>
+          <span id="ppiOut" class="muted">PPI: —</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>2) Flooring Texture</h2>
+        <div class="texture-grid" id="textureGrid"></div>
+        <div class="upload-row">
+          <input type="file" id="texInput" accept="image/*" />
+          <label><input type="checkbox" id="chkSeamless" checked/> Seamless</label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>3) Layout & Scale</h2>
+        <div class="grid-2">
+          <label>Plank Length (in)<input type="number" id="plankLen" min="1" step="0.25" value="48"/></label>
+          <label>Plank Width (in)<input type="number" id="plankWid" min="1" step="0.25" value="7"/></label>
+        </div>
+        <label>Angle (°)<input type="range" id="angle" min="0" max="180" value="0"/></label>
+        <label>Opacity<input type="range" id="opacity" min="20" max="100" value="90"/></label>
+        <label>Exposure<input type="range" id="exposure" min="80" max="120" value="100"/></label>
+        <label>Contrast<input type="range" id="contrast" min="80" max="120" value="100"/></label>
+      </section>
+    </aside>
+
+    <section class="stage-wrap">
+      <div id="stage">
+        <img id="roomImg" alt="Room" />
+        <canvas id="glCanvas"></canvas>
+        <svg id="overlay" xmlns="http://www.w3.org/2000/svg">
+          <polygon id="floorPoly" points="" />
+          <g id="handles"></g>
+          <line id="measureLine" x1="0" y1="0" x2="0" y2="0" class="hidden" />
+        </svg>
+      </div>
+      <p class="muted smallpad">Click four corners of the floor (clockwise). Drag the handles to adjust. Use the Measure Tool to set scale.</p>
+    </section>
+
+    <aside class="right">
+      <section class="card">
+        <h2>Help</h2>
+        <ol class="steps">
+          <li>Upload your room photo.</li>
+          <li>Click 4 floor corners in order (clockwise).</li>
+          <li>Select or upload a flooring texture.</li>
+          <li>Use Measure Tool: draw a line over a known length (e.g., 36″ doorway), enter the inches, and click “Set Scale”.</li>
+          <li>Adjust plank size, angle, and opacity.</li>
+          <li>Export PNG to share.</li>
+        </ol>
+        <details>
+          <summary>Tips for best results</summary>
+          <ul>
+            <li>Use seamless, square textures (512×512 or 1024×1024) for perfect repeating.</li>
+            <li>If your upload isn’t power‑of‑two, the app will resize it automatically for proper tiling.</li>
+            <li>For skewed rooms, place points tightly along the actual floor boundary.</li>
+          </ul>
+        </details>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="app-footer">
+    <span>© <span id="year"></span> Floor Visualizer — Static, no tracking.</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
