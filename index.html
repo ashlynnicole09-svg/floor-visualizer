@@ -29,6 +29,8 @@
         <div class="tool-row">
           <button id="btnFit">Fit</button>
           <button id="btn1x">1:1</button>
+          <button id="btnAutoFloor" class="secondary">Auto floor (beta)</button>
+          <button id="btnAIDetect" class="secondary">AI Detect Floor</button>
           <label><input type="checkbox" id="chkGuides" checked/> Show Guides</label>
         </div>
         <div class="tool-row">
@@ -92,7 +94,7 @@
           <summary>Tips for best results</summary>
           <ul>
             <li>Use seamless, square textures (512×512 or 1024×1024) for perfect repeating.</li>
-            <li>If your upload isn’t power‑of‑two, the app will resize it automatically for proper tiling.</li>
+            <li>If your upload isn’t power-of-two, the app will resize it automatically for proper tiling.</li>
             <li>For skewed rooms, place points tightly along the actual floor boundary.</li>
           </ul>
         </details>
@@ -104,6 +106,7 @@
     <span>© <span id="year"></span> Floor Visualizer — Static, no tracking.</span>
   </footer>
 
+  <script defer src="https://docs.opencv.org/4.x/opencv.js" onload="window._cvReady=true;" onerror="window._cvReady=false"></script>
   <script src="app.js"></script>
 </body>
 </html>
