@@ -1,1 +1,1 @@
-Floor Visualizer v2 — robust photo-load detection, drag & drop, disabled buttons until photo is ready, GitHub Pages ready.
+Floor Visualizer v3-safe — use this build to isolate issues. No OpenCV, extra logging, safe mode, reset button.

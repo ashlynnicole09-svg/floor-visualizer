@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Floor Visualizer — GitHub Pages Ready</title>
-  <meta name="description" content="Upload a room photo, mark the floor plane, and try different flooring textures with realistic perspective and scaling." />
+  <title>Floor Visualizer — v3 Safe</title>
+  <meta name="description" content="Troubleshooting build with debug panel and safe mode." />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="app-header">
-    <h1>Floor Visualizer</h1>
+    <h1>Floor Visualizer <span class="badge">v3-safe</span></h1>
     <div class="actions">
       <button id="btnLoadDemo" class="secondary">Load Demo Room</button>
       <button id="btnExportImage" disabled>Export PNG</button>
       <button id="btnSaveConfig" class="secondary" disabled>Save Session</button>
       <input type="file" id="btnLoadConfig" accept="application/json" class="hidden"/>
       <button id="btnLoadConfigProxy" class="secondary" disabled>Load Session</button>
-      <span id="status" class="muted"></span>
+      <label class="switch"><input type="checkbox" id="chkSafeMode" checked/><span>Safe mode</span></label>
     </div>
   </header>
 
@@ -25,12 +25,11 @@
       <section class="card">
         <h2>1) Room Photo</h2>
         <input type="file" id="roomInput" accept="image/*" />
-        <p class="muted">Tip: drag & drop a photo anywhere on the stage.</p>
+        <p class="muted">Drag & drop onto the stage also works.</p>
         <div class="tool-row">
           <button id="btnFit">Fit</button>
           <button id="btn1x">1:1</button>
-          <button id="btnAutoFloor" class="secondary" disabled>Auto floor (beta)</button>
-          <button id="btnAIDetect" class="secondary" disabled>AI Detect Floor</button>
+          <button id="btnAutoFloor" class="secondary" disabled>Auto floor</button>
           <label><input type="checkbox" id="chkGuides" checked/> Show Guides</label>
         </div>
         <div class="tool-row">
@@ -49,7 +48,6 @@
         <div class="texture-grid" id="textureGrid"></div>
         <div class="upload-row">
           <input type="file" id="texInput" accept="image/*" />
-          <label><input type="checkbox" id="chkSeamless" checked/> Seamless</label>
         </div>
       </section>
 
@@ -67,7 +65,7 @@
     </aside>
 
     <section class="stage-wrap">
-      <div id="stage" class="dropzone" title="Drag & Drop a photo here">
+      <div id="stage" class="dropzone">
         <img id="roomImg" alt="Room" />
         <canvas id="glCanvas"></canvas>
         <svg id="overlay" xmlns="http://www.w3.org/2000/svg">
@@ -76,30 +74,38 @@
           <line id="measureLine" x1="0" y1="0" x2="0" y2="0" class="hidden" />
         </svg>
       </div>
-      <p class="muted smallpad">Click four corners of the floor (clockwise). Drag the handles to adjust. Use the Measure Tool to set scale.</p>
+      <p class="muted smallpad">Click four corners of the floor (clockwise). Drag handles to adjust. Use measure to set scale.</p>
+      <details class="card">
+        <summary>Debug</summary>
+        <div id="debugPanel">
+          <div><strong>Status:</strong> <span id="status">init</span></div>
+          <div><strong>Room loaded:</strong> <span id="roomLoadedTxt">false</span></div>
+          <div><strong>GL:</strong> <span id="glTxt">not-initialized</span></div>
+          <div><strong>Points:</strong> <span id="pointsTxt">0</span></div>
+          <div><strong>Canvas:</strong> <span id="canvasTxt">0×0</span></div>
+          <div><strong>Img:</strong> <span id="imgTxt">0×0</span></div>
+          <button id="btnResetApp" class="danger">Reset App</button>
+        </div>
+      </details>
     </section>
 
     <aside class="right">
       <section class="card">
         <h2>Help</h2>
         <ol class="steps">
-          <li>Upload your room photo.</li>
-          <li>Wait for the photo to appear on the stage (status will show “Photo loaded”).</li>
-          <li>Click 4 floor corners in order (clockwise).</li>
-          <li>Select or upload a flooring texture.</li>
-          <li>Use Measure Tool: draw a line over a known length (e.g., 36″ doorway), enter the inches, and click “Set Scale”.</li>
-          <li>Adjust plank size, angle, and opacity.</li>
-          <li>Export PNG to share.</li>
+          <li>Upload or drag in a room photo.</li>
+          <li>Wait for "Room loaded: true".</li>
+          <li>Click 4 floor corners (clockwise), or press Auto floor.</li>
+          <li>Select a texture and adjust.</li>
         </ol>
       </section>
     </aside>
   </main>
 
   <footer class="app-footer">
-    <span>© <span id="year"></span> Floor Visualizer — Static, no tracking.</span>
+    <span>© <span id="year"></span> Floor Visualizer — v3-safe (troubleshooting).</span>
   </footer>
 
-  <script defer src="https://docs.opencv.org/4.x/opencv.js" onload="window._cvReady=true;" onerror="window._cvReady=false"></script>
   <script src="app.js"></script>
 </body>
 </html>
