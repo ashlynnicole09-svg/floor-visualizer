@@ -9,7 +9,8 @@ h1{margin:0;font-size:18px;font-weight:600;letter-spacing:.5px}
 .smallpad{margin:6px 0 0}
 .actions{display:flex;gap:8px;align-items:center}
 button,.actions a{border-radius:10px;border:1px solid #2a3950;background:#172338;color:#eaeef3;padding:8px 10px;font-size:12px;cursor:pointer}
-button:hover,.actions a:hover{background:#1c2a43}
+button[disabled]{opacity:.5;cursor:not-allowed}
+button:hover:not([disabled]){background:#1c2a43}
 button.secondary{background:#132035}
 button.danger{background:#2a1320;border-color:#4b1e2e}
 .hidden{display:none}
@@ -23,7 +24,8 @@ input[type='range']{width:100%}
 .texture-grid .tex img{width:100%;height:100%;object-fit:cover;display:block;filter:contrast(1.1) saturate(0.9)}
 .texture-grid .tex.active{outline:2px solid #4da3ff}
 .stage-wrap{background:#0b0f14;border:1px solid #1b2735;border-radius:14px;padding:8px;display:flex;flex-direction:column}
-#stage{position:relative;width:100%;max-height:70vh;overflow:auto;background:#0a0e13;border-radius:10px}
+#stage{position:relative;width:100%;max-height:70vh;overflow:auto;background:#0a0e13;border-radius:10px;outline:2px dashed #2a3950}
+#stage.dragover{outline-color:#4da3ff;background:#0c1320}
 #roomImg{display:block;max-width:100%;height:auto;user-select:none;pointer-events:none}
 #glCanvas{position:absolute;left:0;top:0;pointer-events:none;z-index:2}
 #overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:auto;cursor:crosshair;z-index:3}
