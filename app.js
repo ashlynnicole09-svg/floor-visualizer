@@ -1,16 +1,6 @@
-
-// --- bootguard v4.1 ---
-(function(){
-  function write(id, msg){ try{ var el=document.getElementById(id); if(el) el.textContent = msg; }catch(e){} }
-  function ready(fn){ if(document.readyState === 'complete' || document.readyState === 'interactive'){ setTimeout(fn, 0); } else { document.addEventListener('DOMContentLoaded', fn); } }
-  ready(function(){
-    write('status','booting…');
-    try {
-      // proceed to original app.js below
-/* v4-full: WebGL + HUD + debug export */
+/* Robust 'room loaded' detection + drag & drop + disabled buttons until ready */
 const $ = (s, d=document) => d.querySelector(s);
 const $$ = (s, d=document) => [...d.querySelectorAll(s)];
-const version = "v4-full";
 
 const roomInput = $("#roomInput");
 const roomImg = $("#roomImg");
@@ -41,23 +31,19 @@ const btn1x = $("#btn1x");
 const btnSaveConfig = $("#btnSaveConfig");
 const btnLoadConfig = $("#btnLoadConfig");
 const btnLoadConfigProxy = $("#btnLoadConfigProxy");
+const repoLink = $("#repoLink");
 const btnAutoFloor = $("#btnAutoFloor");
-const btnCopyDebug = $("#btnCopyDebug");
-const btnDownloadDebug = $("#btnDownloadDebug");
+const btnAIDetect = $("#btnAIDetect");
 const statusEl = $("#status");
-const roomLoadedTxt = $("#roomLoadedTxt");
-const glTxt = $("#glTxt");
-const pointsTxt = $("#pointsTxt");
-const canvasTxt = $("#canvasTxt");
-const imgTxt = $("#imgTxt");
-const lastEvtTxt = $("#lastEvtTxt");
-const logEl = $("#log");
 $("#year").textContent = new Date().getFullYear();
 
 let roomLoaded = false;
 function setButtonsEnabled(on){
-  [btnExportImage,btnSaveConfig,btnLoadConfigProxy,btnResetPoints,btnMeasure,btnSetScale,btnAutoFloor].forEach(b=> b.disabled=!on);
+  [btnExportImage,btnSaveConfig,btnLoadConfigProxy,btnResetPoints,btnMeasure,btnSetScale,btnAutoFloor,btnAIDetect].forEach(b=> b.disabled=!on);
 }
+
+repoLink.textContent = location.hostname.includes("github.io") ? "View Source" : "GitHub Pages Help";
+repoLink.href = location.hostname.includes("github.io") ? "https://github.com" : "https://docs.github.com/en/pages/quickstart";
 
 let points = [];
 let dragging = null;
@@ -66,11 +52,13 @@ let measurePts = null;
 let ppi = null;
 
 let gl, program, posBuffer, uvBuffer, tex;
+let currentTextureImage = null;
 
 const DEMO_TEXTURES = [
   { name: "Oak Light", src: "assets/textures/oak_light.png" },
   { name: "Oak Warm", src: "assets/textures/oak_warm.png" },
-  { name: "Walnut Dark", src: "assets/textures/walnut_dark.png" }
+  { name: "Walnut Dark", src: "assets/textures/walnut_dark.png" },
+  { name: "Stone Grey", src: "assets/textures/stone_grey.png" }
 ];
 function buildTextureGrid() {
   DEMO_TEXTURES.forEach((t) => {
@@ -91,38 +79,11 @@ function buildTextureGrid() {
 }
 buildTextureGrid();
 
-const dbg = {
-  events: [],
-  logs: [],
-  snapshot() {
-    return {
-      version,
-      roomLoaded,
-      points,
-      img: { w: roomImg.naturalWidth||0, h: roomImg.naturalHeight||0 },
-      canvas: { w: glCanvas.width||0, h: glCanvas.height||0 },
-      gl: !!gl,
-      ua: navigator.userAgent,
-      ts: Date.now()
-    };
-  }
-};
-function pushLog(msg){ const line = `[${new Date().toLocaleTimeString()}] ${msg}`; dbg.logs.push(line); logEl.textContent = dbg.logs.slice(-200).join("\\n"); }
-
-function logStatus() {
-  statusEl.textContent = `ok (${version})`;
-  roomLoadedTxt.textContent = String(roomLoaded);
-  glTxt.textContent = gl ? "ready" : "no-webgl";
-  pointsTxt.textContent = String(points.length);
-  canvasTxt.textContent = `${glCanvas.width}×${glCanvas.height}`;
-  imgTxt.textContent = `${roomImg.naturalWidth||0}×${roomImg.naturalHeight||0}`;
-}
-
 function loadImage(srcOrFile) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = (e) => { pushLog("Image load error"); reject(e); };
+    img.onerror = reject;
     if (srcOrFile instanceof File) {
       const url = URL.createObjectURL(srcOrFile);
       img.src = url;
@@ -133,50 +94,42 @@ function loadImage(srcOrFile) {
 }
 
 function setCanvasSizeToImage() {
-  if (!roomImg.naturalWidth || !roomImg.naturalHeight) return;
   glCanvas.width = roomImg.naturalWidth;
   glCanvas.height = roomImg.naturalHeight;
   overlay.setAttribute("viewBox", `0 0 ${roomImg.naturalWidth} ${roomImg.naturalHeight}`);
   overlay.setAttribute("width", roomImg.naturalWidth);
   overlay.setAttribute("height", roomImg.naturalHeight);
-  logStatus();
 }
 
 function fitImage() { stage.scrollTop = 0; stage.scrollLeft = 0; roomImg.style.maxWidth = "100%"; }
 function oneToOne() { roomImg.style.maxWidth = `${roomImg.naturalWidth}px`; }
 
 function initGL() {
-  try {
-    gl = glCanvas.getContext("webgl");
-    if (!gl) { glTxt.textContent = "webgl-unavailable"; alert("WebGL not supported."); return; }
-    const vs = `attribute vec2 a_pos;attribute vec2 a_uv;uniform vec2 u_resolution;varying vec2 v_uv;void main(){vec2 z=a_pos/u_resolution;vec2 clip=z*2.0-1.0;gl_Position=vec4(clip*vec2(1.0,-1.0),0.0,1.0);v_uv=a_uv;}`;
-    const fs = `precision mediump float;uniform sampler2D u_tex;uniform float u_opacity;uniform float u_exposure;uniform float u_contrast;varying vec2 v_uv;void main(){vec4 c=texture2D(u_tex,v_uv);c.rgb*=u_exposure;c.rgb=(c.rgb-0.5)*u_contrast+0.5;gl_FragColor=vec4(c.rgb,u_opacity);}`;
-    function makeShader(t,src){const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);return s;}
-    const prog=gl.createProgram(), vsO=makeShader(gl.VERTEX_SHADER,vs), fsO=makeShader(gl.FRAGMENT_SHADER,fs);
-    gl.attachShader(prog,vsO);gl.attachShader(prog,fsO);gl.linkProgram(prog);
-    program=prog;
-    const a_pos=gl.getAttribLocation(program,"a_pos"), a_uv=gl.getAttribLocation(program,"a_uv");
-    posBuffer=gl.createBuffer(); uvBuffer=gl.createBuffer();
-    gl.enableVertexAttribArray(a_pos); gl.bindBuffer(gl.ARRAY_BUFFER,posBuffer); gl.vertexAttribPointer(a_pos,2,gl.FLOAT,false,0,0);
-    gl.enableVertexAttribArray(a_uv);  gl.bindBuffer(gl.ARRAY_BUFFER,uvBuffer);  gl.vertexAttribPointer(a_uv,2,gl.FLOAT,false,0,0);
-    window._u={res:gl.getUniformLocation(prog,"u_resolution"), op:gl.getUniformLocation(prog,"u_opacity"), ex:gl.getUniformLocation(prog,"u_exposure"), ct:gl.getUniformLocation(prog,"u_contrast")};
-    tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex);
-    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([200,200,200,255]));
-    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-  } catch (e) { pushLog("GL init error: " + e.message); alert("WebGL init failed."); }
-  logStatus();
+  gl = glCanvas.getContext("webgl");
+  if (!gl) { alert("WebGL not supported."); return; }
+  const vs = `attribute vec2 a_pos;attribute vec2 a_uv;uniform vec2 u_resolution;varying vec2 v_uv;void main(){vec2 z=a_pos/u_resolution;vec2 clip=z*2.0-1.0;gl_Position=vec4(clip*vec2(1.0,-1.0),0.0,1.0);v_uv=a_uv;}`;
+  const fs = `precision mediump float;uniform sampler2D u_tex;uniform float u_opacity;uniform float u_exposure;uniform float u_contrast;varying vec2 v_uv;void main(){vec4 c=texture2D(u_tex,v_uv);c.rgb*=u_exposure;c.rgb=(c.rgb-0.5)*u_contrast+0.5;gl_FragColor=vec4(c.rgb,u_opacity);}`;
+  function makeShader(t,src){const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPLETE_STATUS)&&!gl.getShaderParameter(s,gl.COMPILE_STATUS))console.warn(gl.getShaderInfoLog(s));return s;}
+  const prog=gl.createProgram(), vsO=makeShader(gl.VERTEX_SHADER,vs), fsO=makeShader(gl.FRAGMENT_SHADER,fs);
+  gl.attachShader(prog,vsO);gl.attachShader(prog,fsO);gl.linkProgram(prog);if(!gl.getProgramParameter(prog,gl.LINK_STATUS))console.warn(gl.getProgramInfoLog(prog));gl.useProgram(prog);
+  program=prog;
+  const a_pos=gl.getAttribLocation(program,"a_pos"), a_uv=gl.getAttribLocation(program,"a_uv");
+  posBuffer=gl.createBuffer(); uvBuffer=gl.createBuffer();
+  gl.enableVertexAttribArray(a_pos); gl.bindBuffer(gl.ARRAY_BUFFER,posBuffer); gl.vertexAttribPointer(a_pos,2,gl.FLOAT,false,0,0);
+  gl.enableVertexAttribArray(a_uv);  gl.bindBuffer(gl.ARRAY_BUFFER,uvBuffer);  gl.vertexAttribPointer(a_uv,2,gl.FLOAT,false,0,0);
+  window._u={res:gl.getUniformLocation(program,"u_resolution"), op:gl.getUniformLocation(program,"u_opacity"), ex:gl.getUniformLocation(program,"u_exposure"), ct:gl.getUniformLocation(program,"u_contrast")};
+  tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([200,200,200,255]));
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
 }
-
 function uploadTexture(image){
-  try {
-    const pot=n=>2**Math.round(Math.log2(n));
-    const size=Math.max(64,Math.min(2048,pot(Math.max(image.width,image.height))));
-    const c=document.createElement("canvas"); c.width=c.height=size;
-    const ctx=c.getContext("2d"); const pattern=ctx.createPattern(image,"repeat");
-    ctx.fillStyle=pattern; ctx.fillRect(0,0,size,size);
-    gl.bindTexture(gl.TEXTURE_2D,tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c); gl.generateMipmap(gl.TEXTURE_2D);
-  } catch(e){ pushLog("uploadTexture error: " + e.message); }
+  const pot=n=>2**Math.round(Math.log2(n));
+  const size=Math.max(64,Math.min(2048,pot(Math.max(image.width,image.height))));
+  const c=document.createElement("canvas"); c.width=c.height=size;
+  const ctx=c.getContext("2d"); const pattern=ctx.createPattern(image,"repeat");
+  ctx.fillStyle=pattern; ctx.fillRect(0,0,size,size);
+  gl.bindTexture(gl.TEXTURE_2D,tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c); gl.generateMipmap(gl.TEXTURE_2D);
 }
 function setTexture(image){ uploadTexture(image); render(); }
 
@@ -197,7 +150,6 @@ function computeGeometryAndUV(){
   return {pos,uv};
 }
 function render(){
-  logStatus();
   if(!gl || points.length!==4){ drawGuides(); return; }
   gl.viewport(0,0,glCanvas.width,glCanvas.height); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT);
   gl.useProgram(program);
@@ -213,6 +165,7 @@ function render(){
   drawGuides();
 }
 function drawGuides(){
+  if(points.length===0){ floorPoly.setAttribute("points",""); handlesG.innerHTML=""; return; }
   const ptsStr = points.map(p=>`${p.x},${p.y}`).join(" ");
   floorPoly.setAttribute("points",ptsStr);
   handlesG.innerHTML="";
@@ -226,8 +179,8 @@ function stageCoord(e){
   const rect = glCanvas.getBoundingClientRect();
   const clientX = e.clientX ?? (e.touches && e.touches[0].clientX);
   const clientY = e.clientY ?? (e.touches && e.touches[0].clientY);
-  const x = (clientX - rect.left) * (glCanvas.width / Math.max(1,rect.width));
-  const y = (clientY - rect.top) * (glCanvas.height / Math.max(1,rect.height));
+  const x = (clientX - rect.left) * (glCanvas.width / rect.width);
+  const y = (clientY - rect.top) * (glCanvas.height / rect.height);
   return {x,y};
 }
 function nearestHandle(pt, maxDist=16){
@@ -235,20 +188,9 @@ function nearestHandle(pt, maxDist=16){
   points.forEach((p,i)=>{const d=Math.hypot(p.x-pt.x,p.y-pt.y); if(d<bestD){best=i; bestD=d;}});
   return best;
 }
-
-// HUD dots to visualize pointer events
-function dotFromClient(clientX, clientY, color){
-  const sRect = stage.getBoundingClientRect();
-  const x = clientX - sRect.left, y = clientY - sRect.top;
-  const d=document.createElement("div"); d.style.cssText=`position:absolute;left:${x-3}px;top:${y-3}px;width:6px;height:6px;border-radius:50%;background:${color};opacity:.9;z-index:5;pointer-events:none`;
-  stage.appendChild(d); setTimeout(()=>d.remove(), 1200);
-}
-
 function onPointerDown(e){
-  const pt=stageCoord(e);
-  lastEvtTxt.textContent = `down @ ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
-  dbg.events.push({type:"down",pt,ts:Date.now()}); dotFromClient(e.clientX, e.clientY, "#5cff76"); // green
   if(!roomLoaded){ alert("Upload a room photo first."); return; }
+  const pt=stageCoord(e);
   if(measuring){
     if(!measurePts){ measurePts=[pt]; measureLine.classList.remove("hidden"); measureLine.setAttribute("x1",pt.x); measureLine.setAttribute("y1",pt.y); measureLine.setAttribute("x2",pt.x); measureLine.setAttribute("y2",pt.y); }
     else if(measurePts.length===1){ measurePts.push(pt); measureLine.setAttribute("x2",pt.x); measureLine.setAttribute("y2",pt.y); measuring=false; }
@@ -256,42 +198,34 @@ function onPointerDown(e){
   }
   const idx=nearestHandle(pt,16);
   if(idx!==-1){ dragging=idx; overlay.setPointerCapture && overlay.setPointerCapture(e.pointerId||0); return; }
-  if(points.length<4){ points.push(pt); render(); }
+  if(points.length<4){ points.push(pt); if(points.length===4) render(); else drawGuides(); }
 }
 function onPointerMove(e){
-  const pt=stageCoord(e);
-  lastEvtTxt.textContent = `move @ ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
+  if(!roomLoaded) return;
   if(dragging==null && !(measuring && measurePts && measurePts.length===1)) return;
-  dbg.events.push({type:"move",pt,ts:Date.now()}); dotFromClient(e.clientX, e.clientY, "#ffd966"); // yellow
+  const pt=stageCoord(e);
   if(dragging!=null){ points[dragging]=pt; render(); }
   else if(measuring && measurePts && measurePts.length===1){ measureLine.setAttribute("x2",pt.x); measureLine.setAttribute("y2",pt.y); }
 }
 function onPointerUp(e){
-  const pt=stageCoord(e);
-  lastEvtTxt.textContent = `up @ ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
-  dbg.events.push({type:"up",pt,ts:Date.now()});
   if(dragging!=null){ dragging=null; overlay.releasePointerCapture && overlay.releasePointerCapture(e.pointerId||0); }
 }
 overlay.addEventListener("pointerdown", onPointerDown);
 overlay.addEventListener("pointermove", onPointerMove);
 window.addEventListener("pointerup", onPointerUp);
 
-// Enable UI after load
 function enableUIAfterLoad(){
   roomLoaded = true;
+  statusEl.textContent = "Photo loaded ✓";
   setButtonsEnabled(true);
   setCanvasSizeToImage();
   fitImage();
-  logStatus();
-  pushLog("Photo loaded");
 }
 roomInput.addEventListener("change", async (e)=>{
   const f=e.target.files[0]; if(!f) return;
-  try {
-    const img=await loadImage(f);
-    roomImg.src=img.src;
-    roomImg.onload = enableUIAfterLoad;
-  } catch(e) { pushLog("roomInput load error"); }
+  const img=await loadImage(f);
+  roomImg.src=img.src;
+  roomImg.onload = enableUIAfterLoad;
 });
 
 // Drag & Drop
@@ -305,24 +239,14 @@ stage.addEventListener("drop", async (e)=>{
   roomImg.onload = enableUIAfterLoad;
 });
 
-// Demo image
-btnLoadDemo.addEventListener("click", ()=>{
-  const demo=document.createElement("canvas"); demo.width=1400; demo.height=900;
-  const g=demo.getContext("2d"); const grad=g.createLinearGradient(0,0,0,demo.height); grad.addColorStop(0,"#2b3545"); grad.addColorStop(0.5,"#222b38"); grad.addColorStop(1,"#1a2230");
-  g.fillStyle=grad; g.fillRect(0,0,demo.width,demo.height);
-  g.fillStyle="#3a4454"; g.fillRect(0,0,demo.width,demo.height*0.6);
-  g.fillStyle="#2a2f3a"; g.fillRect(0,demo.height*0.6,demo.width,demo.height*0.4);
-  roomImg.src = demo.toDataURL("image/png");
-  roomImg.onload = enableUIAfterLoad;
-});
-
-// Texture uploads
+// Textures
+function setTexture(image){ uploadTexture(image); render(); }
 texInput.addEventListener("change", async (e)=>{
   const f=e.target.files[0]; if(!f) return; const img=await loadImage(f); setTexture(img);
 });
 
 // Buttons
-btnResetPoints.addEventListener("click", ()=>{ points=[]; measurePts=null; measureLine.classList.add("hidden"); render(); });
+btnResetPoints.addEventListener("click", ()=>{ points=[]; measurePts=null; measureLine.classList.add("hidden"); drawGuides(); render(); });
 btnMeasure.addEventListener("click", ()=>{ measuring=true; measurePts=null; measureLine.classList.add("hidden"); });
 btnSetScale.addEventListener("click", ()=>{
   if(!measurePts || measurePts.length!==2){ alert("Draw a measurement line first."); return; }
@@ -337,6 +261,15 @@ btnExportImage.addEventListener("click", ()=>{
   const ctx=out.getContext("2d"); ctx.drawImage(roomImg,0,0,out.width,out.height); ctx.drawImage(glCanvas,0,0);
   const a=document.createElement("a"); a.href=out.toDataURL("image/png"); a.download="floor-visualizer.png"; a.click();
 });
+btnLoadDemo.addEventListener("click", ()=>{
+  const demo=document.createElement("canvas"); demo.width=1400; demo.height=900;
+  const g=demo.getContext("2d"); const grad=g.createLinearGradient(0,0,0,demo.height); grad.addColorStop(0,"#2b3545"); grad.addColorStop(0.5,"#222b38"); grad.addColorStop(1,"#1a2230");
+  g.fillStyle=grad; g.fillRect(0,0,demo.width,demo.height);
+  g.fillStyle="#3a4454"; g.fillRect(0,0,demo.width,demo.height*0.6);
+  g.fillStyle="#2a2f3a"; g.fillRect(0,demo.height*0.6,demo.width,demo.height*0.4);
+  roomImg.src = demo.toDataURL("image/png");
+  roomImg.onload = enableUIAfterLoad;
+});
 btnFit.addEventListener("click", fitImage);
 btn1x.addEventListener("click", oneToOne);
 btnSaveConfig.addEventListener("click", ()=>{
@@ -345,42 +278,61 @@ btnSaveConfig.addEventListener("click", ()=>{
   const blob=new Blob([JSON.stringify(cfg,null,2)],{type:"application/json"});
   const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="floor-visualizer-session.json"; a.click();
 });
-
+btnLoadConfigProxy.addEventListener("click", ()=> btnLoadConfig.click());
+btnLoadConfig.addEventListener("change", async (e)=>{
+  const file=e.target.files[0]; if(!file) return; const text=await file.text();
+  try{ const cfg=JSON.parse(text);
+    if(cfg.points && cfg.points.length===4) points=cfg.points;
+    ppi = cfg.ppi || ppi; if(ppi) ppiOut.textContent=`PPI: ${ppi.toFixed(2)}`;
+    if(cfg.controls) for(const k of ["plankLen","plankWid","angle","opacity","exposure","contrast"]) if(cfg.controls[k]!=null) (eval(k)).value=cfg.controls[k];
+    drawGuides(); render();
+  }catch{ alert("Invalid session file."); }
+});
 btnAutoFloor.addEventListener("click", ()=>{
   if(!roomLoaded){ alert("Upload a room photo first."); return; }
   const w=roomImg.naturalWidth, h=roomImg.naturalHeight;
   points=[{x:w*0.18,y:h*0.68},{x:w*0.82,y:h*0.68},{x:w*0.98,y:h*0.98},{x:w*0.02,y:h*0.98}];
-  render();
+  drawGuides(); render();
 });
+async function detectFloorWithCV(){
+  if(!roomLoaded){ alert("Upload a room photo first."); return; }
+  if(!window._cvReady || typeof cv==="undefined"){ alert("OpenCV.js not loaded yet."); return; }
+  const w=roomImg.naturalWidth, h=roomImg.naturalHeight;
+  const scale=Math.min(800/Math.max(w,h),1), dw=Math.max(1,Math.round(w*scale)), dh=Math.max(1,Math.round(h*scale));
+  const c=document.createElement("canvas"); c.width=dw; c.height=dh; const ctx=c.getContext("2d"); ctx.drawImage(roomImg,0,0,dw,dh);
+  const src=cv.imread(c), gray=new cv.Mat(); cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY,0);
+  const blur=new cv.Mat(); cv.GaussianBlur(gray,blur,new cv.Size(5,5),0);
+  const edges=new cv.Mat(); cv.Canny(blur,edges,50,150);
+  const contours=new cv.MatVector(); const hierarchy=new cv.Mat();
+  cv.findContours(edges,contours,hierarchy,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
+  let best=null, bestScore=-1;
+  for(let i=0;i<contours.size();i++){ const cnt=contours.get(i);
+    const area=cv.contourArea(cnt); if(area<(dw*dh*0.05)){ cnt.delete(); continue; }
+    const rect=cv.boundingRect(cnt); const bottomBias=rect.y+rect.height>=dh*0.6?1:0;
+    const peri=cv.arcLength(cnt,true); const approx=new cv.Mat(); cv.approxPolyDP(cnt,approx,0.02*peri,true);
+    const verts=approx.rows; const vertexScore=(verts===4)?2:(verts===5?1.4:(verts===6?1.2:1));
+    const score=(area/dw/dh)*10*vertexScore + bottomBias*2;
+    if(score>bestScore){ if(best) best.delete(); best=approx; bestScore=score; }
+    cnt.delete();
+  }
+  let poly=null;
+  if(best && best.rows>=4){
+    const pts=[]; for(let i=0;i<best.rows;i++) pts.push({x:best.intPtr(i,0)[0], y:best.intPtr(i,0)[1]});
+    const toFull=p=>({x:p.x/scale,y:p.y/scale});
+    const tl=toFull(pts.reduce((a,b)=>(a.x+a.y<b.x+b.y)?a:b));
+    const br=toFull(pts.reduce((a,b)=>(a.x+a.y>b.x+b.y)?a:b));
+    const tr=toFull(pts.reduce((a,b)=>(a.x-b.y>b.x-b.y)?a:b));
+    const bl=toFull(pts.reduce((a,b)=>(-a.x+b.y>-b.x+b.y)?a:b));
+    poly=[tl,tr,br,bl]; best.delete();
+  } else {
+    poly=[{x:w*0.18,y:h*0.68},{x:w*0.82,y:h*0.68},{x:w*0.98,y:h*0.98},{x:w*0.02,y:h*0.98}];
+  }
+  if(poly){ points=poly; drawGuides(); render(); }
+  src.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete();
+}
+btnAIDetect.addEventListener("click", detectFloorWithCV);
 
-// Debug export
-btnCopyDebug.addEventListener("click", async ()=>{
-  const payload = { ...dbg.snapshot(), logs: dbg.logs, events: dbg.events.slice(-200) };
-  const text = JSON.stringify(payload, null, 2);
-  try { await navigator.clipboard.writeText(text); alert("Debug copied to clipboard. Paste it here in chat."); }
-  catch { alert("Could not copy. Use Download Debug instead."); }
-});
-btnDownloadDebug.addEventListener("click", ()=>{
-  const payload = { ...dbg.snapshot(), logs: dbg.logs, events: dbg.events.slice(-200) };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "visualizer-debug.json"; a.click();
-});
-
-// WebGL minimal setup at start
-let posBuffer, uvBuffer;
-function initGLAndStatus(){ initGL(); setButtonsEnabled(false); statusEl.textContent = "ready"; logStatus(); }
-initGLAndStatus();
-
-      // end original app.js
-      write('status','ok (boot ok)');
-      console.log('[visualizer] app.js boot ok');
-    } catch(err){
-      console.error('[visualizer] boot error:', err);
-      write('status','boot error');
-      var log = document.getElementById('log');
-      if(log){ log.textContent += "\n[boot error] " + (err && err.message ? err.message : String(err)); }
-      alert("Visualizer boot error: " + (err && err.message ? err.message : String(err)));
-    }
-  });
-})();
-// --- end bootguard ---
+// Initialize
+initGL();
+setButtonsEnabled(false);
+statusEl.textContent = "Upload a room photo to begin";
