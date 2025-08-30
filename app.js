@@ -1,3 +1,12 @@
+
+// --- bootguard v4.1 ---
+(function(){
+  function write(id, msg){ try{ var el=document.getElementById(id); if(el) el.textContent = msg; }catch(e){} }
+  function ready(fn){ if(document.readyState === 'complete' || document.readyState === 'interactive'){ setTimeout(fn, 0); } else { document.addEventListener('DOMContentLoaded', fn); } }
+  ready(function(){
+    write('status','booting…');
+    try {
+      // proceed to original app.js below
 /* v4-full: WebGL + HUD + debug export */
 const $ = (s, d=document) => d.querySelector(s);
 const $$ = (s, d=document) => [...d.querySelectorAll(s)];
@@ -361,3 +370,17 @@ btnDownloadDebug.addEventListener("click", ()=>{
 let posBuffer, uvBuffer;
 function initGLAndStatus(){ initGL(); setButtonsEnabled(false); statusEl.textContent = "ready"; logStatus(); }
 initGLAndStatus();
+
+      // end original app.js
+      write('status','ok (boot ok)');
+      console.log('[visualizer] app.js boot ok');
+    } catch(err){
+      console.error('[visualizer] boot error:', err);
+      write('status','boot error');
+      var log = document.getElementById('log');
+      if(log){ log.textContent += "\n[boot error] " + (err && err.message ? err.message : String(err)); }
+      alert("Visualizer boot error: " + (err && err.message ? err.message : String(err)));
+    }
+  });
+})();
+// --- end bootguard ---
